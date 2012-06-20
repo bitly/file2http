@@ -29,7 +29,6 @@ type PubsubPublisher struct {
 }
 
 func (p *PubsubPublisher) Publish(msg string) error {
-    log.Println("Called publish")
     endpoint := fmt.Sprintf("%s/pub", p.addr)
     var buffer bytes.Buffer
     buffer.Write([]byte(msg))
@@ -38,14 +37,23 @@ func (p *PubsubPublisher) Publish(msg string) error {
     return err
 }
 
-func PublishLoop(pub Publisher, publishMsgs chan string) {
+func PublishLoop(pub Publisher, publishMsgs chan string, exitChan chan bool) {
+    exit := false
     for {
-        msg := <-publishMsgs
-        log.Println("Publishing message: ", msg)
+        var msg string
+        select {
+        case msg = <-publishMsgs:
+        // log.Println("Publishing message: ", msg)
 
         err := pub.Publish(msg)
         if err != nil {
             log.Println("ERROR publishing: ", err)
+            exit = true
+        }
+        case <- exitChan:
+            exit = true
+        }
+        if exit {
             break
         }
     }
@@ -56,12 +64,12 @@ func main() {
     flag.Parse()
     var publisher Publisher
     if len(*pubsub) > 0 {
-        log.Println("Pubsub")
         publisher = &PubsubPublisher{PublisherInfo{&http.Client{}, *pubsub}}
     }
 
     msgsChan := make(chan string, 1) // TODO - decide how much we wish to buffer here
-    go PublishLoop(publisher, msgsChan)
+    publishExitChan := make(chan bool)
+    go PublishLoop(publisher, msgsChan, publishExitChan)
     reader := bufio.NewReader(os.Stdin)
     for {
         line, err := reader.ReadString('\n')
@@ -74,4 +82,5 @@ func main() {
         line = strings.TrimSpace(line)
         msgsChan <- line
     }
+    publishExitChan <- true
 }
