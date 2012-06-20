@@ -12,9 +12,20 @@ import (
     "net/url"
     "bytes"
     "log"
+    "strconv"
 )
 
-var pubsub = flag.String("pubsub", "", "Pubsub to write to")
+var pubsub = flag.String("p", "", "Pubsub address (or local port) to write to")
+var simplequeue = flag.String("s", "", "Simplequeue address (or local port) to write to")
+
+func ParseAddress(inputted string) string {
+    port, err := strconv.Atoi(inputted)
+    if err == nil {
+        // assume this was meant to be a port number
+        return fmt.Sprintf("http://127.0.0.1:%d", port)
+    }
+    return inputted
+}
 
 type Publisher interface {
     Publish(string) error
@@ -48,11 +59,13 @@ type SimplequeuePublisher struct {
 }
 
 func (p *SimplequeuePublisher) Publish(msg string) error {
-    endpoint := fmt.Sprintf("%s/pub?data=%s", p.addr, url.QueryEscape(msg))
+    endpoint := fmt.Sprintf("%s/put?data=%s", p.addr, url.QueryEscape(msg))
     resp, err := http.Get(endpoint)
     defer resp.Body.Close()
     return err
 }
+
+// ---------- Main Logic ----------------------
 
 func PublishLoop(pub Publisher, publishMsgs chan string, exitChan chan bool) {
     exit := false
@@ -81,7 +94,9 @@ func main() {
     flag.Parse()
     var publisher Publisher
     if len(*pubsub) > 0 {
-        publisher = &PubsubPublisher{PublisherInfo{&http.Client{}, *pubsub}}
+        publisher = &PubsubPublisher{PublisherInfo{&http.Client{}, ParseAddress(*pubsub)}}
+    }else if len(*simplequeue) > 0 {
+        publisher = &SimplequeuePublisher{PublisherInfo{&http.Client{}, ParseAddress(*simplequeue)}}
     }
 
     msgsChan := make(chan string, 1) // TODO - decide how much we wish to buffer here
