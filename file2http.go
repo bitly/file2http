@@ -9,6 +9,7 @@ import (
     "strings"
     "io"
     "net/http"
+    "net/url"
     "bytes"
     "log"
 )
@@ -24,6 +25,8 @@ type PublisherInfo struct { // ha! this is what happens when your language makes
     addr string
 }
 
+// ---------- PubSub -------------------------
+
 type PubsubPublisher struct {
     PublisherInfo
 }
@@ -33,6 +36,20 @@ func (p *PubsubPublisher) Publish(msg string) error {
     var buffer bytes.Buffer
     buffer.Write([]byte(msg))
     resp, err := http.Post(endpoint, "application/json", &buffer)
+    defer resp.Body.Close()
+    return err
+}
+
+
+// ----------- SQ ---------------------------
+
+type SimplequeuePublisher struct {
+    PublisherInfo
+}
+
+func (p *SimplequeuePublisher) Publish(msg string) error {
+    endpoint := fmt.Sprintf("%s/pub?data=%s", p.addr, url.QueryEscape(msg))
+    resp, err := http.Get(endpoint)
     defer resp.Body.Close()
     return err
 }
