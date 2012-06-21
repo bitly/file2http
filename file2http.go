@@ -13,10 +13,13 @@ import (
     "bytes"
     "log"
     "strconv"
+    "runtime/pprof"
 )
 
 var pubsub = flag.String("p", "", "Pubsub address (or local port) to write to")
 var simplequeue = flag.String("s", "", "Simplequeue address (or local port) to write to")
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var numPublishers = flag.Int("n", 5, "Number of concurrent publishers")
 
 func ParseAddress(inputted string) string {
     port, err := strconv.Atoi(inputted)
@@ -48,6 +51,7 @@ func (p *PubsubPublisher) Publish(msg string) error {
     buffer.Write([]byte(msg))
     resp, err := http.Post(endpoint, "application/json", &buffer)
     defer resp.Body.Close()
+    defer buffer.Reset()
     return err
 }
 
@@ -92,6 +96,14 @@ func PublishLoop(pub Publisher, publishMsgs chan string, exitChan chan bool) {
 
 func main() {
     flag.Parse()
+    if *cpuprofile != "" {
+        f, err := os.Create(*cpuprofile)
+        if err != nil {
+            log.Fatal(err)
+        }
+        pprof.StartCPUProfile(f)
+        defer pprof.StopCPUProfile()
+    }
     var publisher Publisher
     if len(*pubsub) > 0 {
         publisher = &PubsubPublisher{PublisherInfo{&http.Client{}, ParseAddress(*pubsub)}}
@@ -101,7 +113,9 @@ func main() {
 
     msgsChan := make(chan string, 1) // TODO - decide how much we wish to buffer here
     publishExitChan := make(chan bool)
-    go PublishLoop(publisher, msgsChan, publishExitChan)
+    for i := 0; i < *numPublishers; i++ {
+        go PublishLoop(publisher, msgsChan, publishExitChan)
+    }
     reader := bufio.NewReader(os.Stdin)
     for {
         line, err := reader.ReadString('\n')
@@ -114,5 +128,7 @@ func main() {
         line = strings.TrimSpace(line)
         msgsChan <- line
     }
-    publishExitChan <- true
+    for i := 0; i < *numPublishers; i++ {
+        publishExitChan <- true
+    }
 }
