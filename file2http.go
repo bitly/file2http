@@ -1,7 +1,6 @@
 package main
 
 import (
-    // "bitly/simplejson"
     "flag"
     "fmt"
     "bufio"
@@ -12,58 +11,47 @@ import (
     "net/url"
     "bytes"
     "log"
-    "strconv"
     "runtime/pprof"
 )
 
-var pubsub = flag.String("p", "", "Pubsub address (or local port) to write to")
-var simplequeue = flag.String("s", "", "Simplequeue address (or local port) to write to")
+var post = flag.String("post", "", "Address to make a POST request to. Data will be in the body")
+var get = flag.String("get", "", `Address to make a GET request to.
+     Address should be a format string where data can be subbed in`)
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var numPublishers = flag.Int("n", 5, "Number of concurrent publishers")
-
-func ParseAddress(inputted string) string {
-    port, err := strconv.Atoi(inputted)
-    if err == nil {
-        // assume this was meant to be a port number
-        return fmt.Sprintf("http://127.0.0.1:%d", port)
-    }
-    return inputted
-}
 
 type Publisher interface {
     Publish(string) error
 }
 
-type PublisherInfo struct { // ha! this is what happens when your language makes you use interfaces
-    httpclient *http.Client
+type PublisherInfo struct {
     addr string
 }
 
-// ---------- PubSub -------------------------
+// ---------- Post -------------------------
 
-type PubsubPublisher struct {
+type PostPublisher struct {
     PublisherInfo
 }
 
-func (p *PubsubPublisher) Publish(msg string) error {
-    endpoint := fmt.Sprintf("%s/pub", p.addr)
+func (p *PostPublisher) Publish(msg string) error {
     var buffer bytes.Buffer
     buffer.Write([]byte(msg))
-    resp, err := http.Post(endpoint, "application/json", &buffer)
+    resp, err := http.Post(p.addr, "application/octet-stream", &buffer)
     defer resp.Body.Close()
     defer buffer.Reset()
     return err
 }
 
 
-// ----------- SQ ---------------------------
+// ----------- Get ---------------------------
 
-type SimplequeuePublisher struct {
+type GetPublisher struct {
     PublisherInfo
 }
 
-func (p *SimplequeuePublisher) Publish(msg string) error {
-    endpoint := fmt.Sprintf("%s/put?data=%s", p.addr, url.QueryEscape(msg))
+func (p *GetPublisher) Publish(msg string) error {
+    endpoint := fmt.Sprintf(p.addr, url.QueryEscape(msg))
     resp, err := http.Get(endpoint)
     defer resp.Body.Close()
     return err
@@ -105,13 +93,18 @@ func main() {
         defer pprof.StopCPUProfile()
     }
     var publisher Publisher
-    if len(*pubsub) > 0 {
-        publisher = &PubsubPublisher{PublisherInfo{&http.Client{}, ParseAddress(*pubsub)}}
-    }else if len(*simplequeue) > 0 {
-        publisher = &SimplequeuePublisher{PublisherInfo{&http.Client{}, ParseAddress(*simplequeue)}}
+    if len(*post) > 0 {
+        publisher = &PostPublisher{PublisherInfo{*post}}
+    }else if len(*get) > 0 {
+        if strings.Count(*get, "%s") != 1{
+            log.Fatal("Invalid get address - must be a format string")
+        }
+        publisher = &GetPublisher{PublisherInfo{*get}}
+    } else {
+        log.Fatal("Need get or post address!")
     }
 
-    msgsChan := make(chan string, 1) // TODO - decide how much we wish to buffer here
+    msgsChan := make(chan string, *numPublishers)
     publishExitChan := make(chan bool)
     for i := 0; i < *numPublishers; i++ {
         go PublishLoop(publisher, msgsChan, publishExitChan)
