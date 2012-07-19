@@ -59,26 +59,15 @@ func (p *GetPublisher) Publish(msg string) error {
 
 // ---------- Main Logic ----------------------
 
-func PublishLoop(pub Publisher, publishMsgs chan string, exitChan chan bool) {
-    exit := false
-    for {
-        var msg string
-        select {
-        case msg = <-publishMsgs:
-        // log.Println("Publishing message: ", msg)
-
+func PublishLoop(done chan struct{}, pub Publisher, publishMsgs chan string) {
+    for msg := range publishMsgs {
         err := pub.Publish(msg)
         if err != nil {
             log.Println("ERROR publishing: ", err)
-            exit = true
-        }
-        case <- exitChan:
-            exit = true
-        }
-        if exit {
             break
         }
     }
+    done <- struct{}{}
 }
 
 
@@ -104,10 +93,10 @@ func main() {
         log.Fatal("Need get or post address!")
     }
 
-    msgsChan := make(chan string, *numPublishers)
-    publishExitChan := make(chan bool)
+    msgsChan := make(chan string)
+    publishExitChan := make(chan struct{})
     for i := 0; i < *numPublishers; i++ {
-        go PublishLoop(publisher, msgsChan, publishExitChan)
+        go PublishLoop(publishExitChan, publisher, msgsChan)
     }
     reader := bufio.NewReader(os.Stdin)
     for {
@@ -121,7 +110,9 @@ func main() {
         line = strings.TrimSpace(line)
         msgsChan <- line
     }
+    close(msgsChan)
     for i := 0; i < *numPublishers; i++ {
-        publishExitChan <- true
+        <-publishExitChan
     }
+    close(publishExitChan)
 }
