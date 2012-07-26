@@ -97,6 +97,7 @@ func main() {
     publishExitChan := make(chan struct{})
     for i := 0; i < *numPublishers; i++ {
         go PublishLoop(publishExitChan, publisher, msgsChan)
+        // TODO - crazy idea: what if I were to defer reading from the exit channel here?
     }
     reader := bufio.NewReader(os.Stdin)
     for {
