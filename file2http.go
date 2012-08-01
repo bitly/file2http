@@ -19,6 +19,10 @@ var get = flag.String("get", "", `Address to make a GET request to.
      Address should be a format string where data can be subbed in`)
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var numPublishers = flag.Int("n", 5, "Number of concurrent publishers")
+var showVersion = flag.Bool("version", false, "print version string")
+
+
+const VERSION = "0.1"
 
 type Publisher interface {
     Publish(string) error
@@ -73,6 +77,12 @@ func PublishLoop(done chan struct{}, pub Publisher, publishMsgs chan string) {
 
 func main() {
     flag.Parse()
+
+    if *showVersion {
+        fmt.Printf("file2http v%s\n", VERSION)
+        return
+    }
+
     if *cpuprofile != "" {
         f, err := os.Create(*cpuprofile)
         if err != nil {
