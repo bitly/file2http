@@ -14,14 +14,13 @@ import (
 	"strings"
 )
 
-var post = flag.String("post", "", "Address to make a POST request to. Data will be in the body")
-var get = flag.String("get", "", `Address to make a GET request to.
-     Address should be a format string where data can be subbed in`)
+var post = flag.String("post", "", "HTTP address to make a POST request to.  data will be in the body.")
+var get = flag.String("get", "", "HTTP address to make a GET request to. '%s' will be printf replaced with data.")
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var numPublishers = flag.Int("n", 5, "Number of concurrent publishers")
 var showVersion = flag.Bool("version", false, "print version string")
 
-const VERSION = "0.1"
+const VERSION = "0.2"
 
 type Publisher interface {
 	Publish(string) error
@@ -42,7 +41,7 @@ func (p *PostPublisher) Publish(msg string) error {
 		return err
 	}
 	resp.Body.Close()
-	return err
+	return nil
 }
 
 type GetPublisher struct {
@@ -56,15 +55,14 @@ func (p *GetPublisher) Publish(msg string) error {
 		return err
 	}
 	resp.Body.Close()
-	return err
+	return nil
 }
 
 func PublishLoop(done chan struct{}, pub Publisher, publishMsgs chan string) {
 	for msg := range publishMsgs {
 		err := pub.Publish(msg)
 		if err != nil {
-			log.Println("ERROR publishing: ", err)
-			break
+			log.Printf("ERROR: publishing '%s' - %s", msg, err.Error())
 		}
 	}
 	done <- struct{}{}
