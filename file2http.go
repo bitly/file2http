@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"strings"
+	"sync"
 )
 
 var post = flag.String("post", "", "HTTP address to make a POST request to.  data will be in the body.")
@@ -58,14 +59,14 @@ func (p *GetPublisher) Publish(msg string) error {
 	return nil
 }
 
-func PublishLoop(done chan struct{}, pub Publisher, publishMsgs chan string) {
+func PublishLoop(waitGroup *sync.WaitGroup, pub Publisher, publishMsgs chan string) {
 	for msg := range publishMsgs {
 		err := pub.Publish(msg)
 		if err != nil {
 			log.Printf("ERROR: publishing '%s' - %s", msg, err.Error())
 		}
 	}
-	done <- struct{}{}
+	waitGroup.Done()
 }
 
 func main() {
@@ -97,10 +98,10 @@ func main() {
 	}
 
 	msgsChan := make(chan string)
-	publishExitChan := make(chan struct{})
+	waitGroup := &sync.WaitGroup{}
+	waitGroup.Add(*numPublishers)
 	for i := 0; i < *numPublishers; i++ {
-		go PublishLoop(publishExitChan, publisher, msgsChan)
-		// TODO - crazy idea: what if I were to defer reading from the exit channel here?
+		go PublishLoop(waitGroup, publisher, msgsChan)
 	}
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -115,8 +116,5 @@ func main() {
 		msgsChan <- line
 	}
 	close(msgsChan)
-	for i := 0; i < *numPublishers; i++ {
-		<-publishExitChan
-	}
-	close(publishExitChan)
+	waitGroup.Wait()
 }
