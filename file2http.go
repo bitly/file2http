@@ -10,18 +10,16 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime/pprof"
 	"strings"
 	"sync"
 )
 
 var post = flag.String("post", "", "HTTP address to make a POST request to.  data will be in the body.")
 var get = flag.String("get", "", "HTTP address to make a GET request to. '%s' will be printf replaced with data.")
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var numPublishers = flag.Int("n", 5, "Number of concurrent publishers")
 var showVersion = flag.Bool("version", false, "print version string")
 
-const VERSION = "0.2"
+const VERSION = "0.3"
 
 type Publisher interface {
 	Publish(string) error
@@ -36,8 +34,8 @@ type PostPublisher struct {
 }
 
 func (p *PostPublisher) Publish(msg string) error {
-	reader := bytes.NewReader([]byte(msg))
-	resp, err := http.Post(p.addr, "application/octet-stream", reader)
+	buf := bytes.NewBuffer([]byte(msg))
+	resp, err := http.Post(p.addr, "application/octet-stream", buf)
 	if err != nil {
 		return err
 	}
@@ -77,14 +75,6 @@ func main() {
 		return
 	}
 
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
 	var publisher Publisher
 	if len(*post) > 0 {
 		publisher = &PostPublisher{PublisherInfo{*post}}
@@ -103,6 +93,7 @@ func main() {
 	for i := 0; i < *numPublishers; i++ {
 		go PublishLoop(waitGroup, publisher, msgsChan)
 	}
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		line, err := reader.ReadString('\n')
@@ -115,6 +106,9 @@ func main() {
 		line = strings.TrimSpace(line)
 		msgsChan <- line
 	}
+
 	close(msgsChan)
 	waitGroup.Wait()
+
+	os.Exit(0)
 }
