@@ -109,4 +109,6 @@ func main() {
 
 	close(msgsChan)
 	waitGroup.Wait()
+
+	os.Exit(0)
 }
