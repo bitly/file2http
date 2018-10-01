@@ -81,8 +81,9 @@ func main() {
 	} else if len(*get) > 0 {
 		if strings.Count(*get, "%s") != 1 {
 			log.Fatal("Invalid get address - must be a format string")
+		} else {
+			publisher = &GetPublisher{PublisherInfo{*get}}
 		}
-		publisher = &GetPublisher{PublisherInfo{*get}}
 	} else {
 		log.Fatal("Need get or post address!")
 	}
